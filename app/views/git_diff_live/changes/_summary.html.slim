@@ -1,0 +1,14 @@
+/ What is compared and how much changed, and the fingerprint of the diff these numbers (and the page) were drawn from: changes_controller.js polls for a different one. Replaced on every refresh.
+.flex.flex-wrap.items-center.gap-x-6.gap-y-2#changes_summary data-changes-target="summary" data-fingerprint=@diff.fingerprint
+
+  .text-fg-muted
+    ' Working tree of
+    span.font-mono.text-fg = @diff.branch
+    '  against
+    span.font-mono.text-fg title=@diff.base_sha = @diff.base
+    - unless @diff.base_sha.start_with?(@diff.base)
+      |  (#{ @diff.base_sha.first(8) })
+
+  .flex.items-center.gap-2.font-mono
+    span = pluralize(@files.size, "file")
+    = change_counts(@files.sum(&:additions), @files.sum(&:deletions))

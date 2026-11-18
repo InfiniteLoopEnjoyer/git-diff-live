@@ -1,0 +1,77 @@
+/ One changed file of the changes page: a <details> whose summary is the file's sticky heading and whose body is the comparison, old on the left and new on the right.
+/ locals: file (GitDiffLive::Diff::ChangedFile; file.whole? when it is drawn complete), shown (draw it although it is large), open (true when the reader has just asked for it)
+/ The data attributes are what the page holds of this file: changes_controller.js posts them to refresh, which redraws the file only if its digest has moved on, and the same way (whole, shown).
+- shown = local_assigns[:shown]
+- file_params = { path: file.path, **change_base_params, show: (1 if shown) }.compact
+
+/ A deleted file starts closed: its whole content is red, which is rarely what a review needs to read. However the reader leaves a file, it stays that way through a refresh (changes_controller.js#keepOpenState).
+details.group.rounded.border.border-edge.bg-surface.scroll-mt-2 id=file.dom_id open=(local_assigns[:open] || file.status != :deleted) data-changes-target="file" data-path=file.path data-digest=file.digest data-whole=("true" if file.whole?) data-shown=("true" if shown)
+
+  summary.sticky.top-0.z-10.flex.items-center.gap-3.px-3.py-2.rounded.bg-surface.cursor-pointer.list-none
+
+    span.w-3.shrink-0.text-xs.text-fg-muted.transition-transform.group-open:rotate-90 = icon(:fas, :chevron_right)
+
+    span.shrink-0 = change_status_icon(file)
+
+    span.font-mono.break-all
+      - if file.old_path.present?
+        span.text-fg-muted = file.old_path
+        span.px-2.text-fg-muted = icon(:fas, :arrow_right)
+      = file.path
+
+    - if file.untracked?
+      span.shrink-0.px-1.rounded.border.border-edge.text-xs.text-fg-muted untracked
+
+    span.shrink-0.font-mono.text-xs = change_counts(file.additions, file.deletions)
+
+    span.flex.items-center.gap-4.shrink-0.ml-auto
+
+      / The whole file only says more than the changes do for a file that has both sides.
+      - if file.status.in?([ :modified, :renamed, :copied ]) && file.hunks.any?
+        - if file.whole?
+          = link_to icon(:fas, :compress, "Changes only"), file_path(**file_params), class: change_link_classes, data: { turbo_stream: true }
+        - else
+          = link_to icon(:fas, :file, "Whole file"), file_path(**file_params, whole: 1), class: change_link_classes, data: { turbo_stream: true }
+
+      / Opens the file in the editor at its first change. A deleted file is not there to open.
+      - unless file.status == :deleted
+        = link_to icon(:fas, :arrow_up_right_from_square, "Open"), change_editor_url(@diff.root.join(file.path), file.first_changed_line), class: change_link_classes, title: "Open in the editor at line #{ file.first_changed_line }"
+
+  - if file.binary?
+    .px-3.py-2.border-t.border-edge.text-fg-muted Binary file, not shown.
+
+  - elsif file.status == :unmerged
+    .px-3.py-2.border-t.border-edge.text-fg-muted Unmerged: resolve the conflict to see the changes.
+
+  - elsif file.unchanged_content?
+    .px-3.py-2.border-t.border-edge.text-fg-muted = file.old_path.present? ? "Moved, content unchanged." : "No change to the content."
+
+  - elsif file.large? && !shown
+    .px-3.py-2.border-t.border-edge.text-fg-muted
+      ' #{ number_with_delimiter file.additions + file.deletions } changed lines.
+      = link_to "Show them", file_path(**file_params, show: 1), class: change_link_classes, data: { turbo_stream: true }
+
+  - else
+    / Four columns: old number, old line, new number, new line. Each row's cells share a grid row, so the two sides stay level when a long line wraps.
+    .grid.border-t.border-edge.bg-canvas.font-mono.text-xs.leading-5 class="grid-cols-[3.25rem_minmax(0,1fr)_3.25rem_minmax(0,1fr)] [tab-size:4]"
+
+      - file.hunks.each do | hunk |
+
+        - unless file.whole?
+          .col-span-4.px-3.bg-surface.text-fg-muted.truncate = hunk.heading
+
+        - hunk.rows.each do | row |
+
+          - if row.old
+            div class="px-2 text-right select-none #{ change_number_classes(row.old) }" = row.old.number
+            div class="px-2 whitespace-pre-wrap wrap-anywhere #{ change_code_classes(row.old) }" = change_code(row.old)
+          - else
+            .bg-surface
+            .bg-surface
+
+          - if row.new
+            div class="px-2 text-right select-none border-l border-edge #{ change_number_classes(row.new) }" = row.new.number
+            div class="px-2 whitespace-pre-wrap wrap-anywhere #{ change_code_classes(row.new) }" = change_code(row.new)
+          - else
+            .bg-surface.border-l.border-edge
+            .bg-surface

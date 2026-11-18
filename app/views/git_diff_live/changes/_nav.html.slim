@@ -1,0 +1,13 @@
+/ The changed files by folder. Sticky, so it stays beside the diff while that scrolls. Morphed on every refresh, which keeps its own scroll position.
+nav.hidden.lg:flex.flex-col.gap-3.sticky.top-0.w-80.shrink-0.h-screen.overflow-y-auto.p-3.border-r.border-edge#changes_nav aria-label="Changed files"
+
+  - @files.group_by { File.dirname(it.path) }.each do | folder, files |
+    .flex.flex-col
+
+      .px-1.pb-1.font-mono.text-xs.text-fg-muted.break-all = folder == "." ? "/" : folder
+
+      - files.each do | file |
+        = link_to "##{ file.dom_id }", class: "flex items-center gap-2 px-1 py-0.5 rounded hover:bg-surface", title: file.path do
+          span.w-4.shrink-0.text-center.text-xs = change_status_icon(file)
+          span class="truncate grow #{ "line-through text-fg-muted" if file.status == :deleted }" = File.basename(file.path)
+          span.shrink-0.font-mono.text-xs = change_counts(file.additions, file.deletions)

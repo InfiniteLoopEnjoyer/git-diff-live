@@ -1,0 +1,28 @@
+/*
+ * The source of the page's stylesheet. `rake css` compiles it, with every
+ * class the views, helpers and JavaScript use, into
+ * app/assets/builds/git_diff_live.css, which is what ships in the gem: the
+ * page looks the same in every host app and asks nothing of the host's own
+ * Tailwind build. Run it after changing a class anywhere.
+ */
+@import "tailwindcss";
+
+@source "../app/views";
+@source "../app/helpers";
+@source "../app/javascript";
+
+/*
+ * The page is dark only: a diff is hard to read on white. These are the
+ * colours it is drawn in (Tailwind's gray and sky, by value so the build
+ * carries them whatever else it drops).
+ */
+@theme {
+  --color-canvas: oklch(0.13 0.028 261.692);
+  --color-surface: oklch(0.21 0.034 264.665);
+  --color-raised: oklch(0.278 0.033 256.848);
+  --color-edge: oklch(0.278 0.033 256.848);
+  --color-fg: oklch(0.928 0.006 264.531);
+  --color-fg-muted: oklch(0.707 0.022 261.325);
+  --color-accent: oklch(0.746 0.16 232.661);
+  --color-accent-hover: oklch(0.828 0.111 230.318);
+}

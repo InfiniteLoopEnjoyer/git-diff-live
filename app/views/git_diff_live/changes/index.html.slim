@@ -1,0 +1,39 @@
+/ The changes page: the working tree against @diff.base, one section per changed file (_file), with a list of the files down the left.
+/ changes_controller.js keeps it up to date: it polls the fingerprint and, when that moves on, posts what the page holds to refresh, which streams back only what is different (refresh.turbo_stream).
+.flex.flex-col.min-h-screen data-controller="changes" data-changes-fingerprint-url-value=fingerprint_path(**change_base_params) data-changes-refresh-url-value=refresh_path(**change_base_params) data-changes-interval-value=(GitDiffLive.configuration.poll_interval.to_f * 1000).round data-action="turbo:before-morph-attribute->changes#keepOpenState"
+
+  header.flex.flex-wrap.items-center.gap-x-6.gap-y-2.px-4.py-3.border-b.border-edge.bg-surface
+
+    h1.text-lg.font-semibold = icon(:fas, :code_compare, "Changes")
+
+    = render "git_diff_live/changes/summary"
+
+    - if GitDiffLive.configuration.poll_interval.to_f.positive?
+      .flex.items-center.gap-2.text-xs.text-fg-muted.transition-opacity title="The page redraws what changes in the working tree" data-changes-target="status"
+        span.size-2.rounded-full.bg-emerald-400
+        | Live
+
+    .flex.items-center.gap-2.ml-auto
+
+      = form_with url: root_path, method: :get, html: { class: "flex items-center gap-2" } do | f |
+        = f.label :base, "Compare with", class: "whitespace-nowrap text-fg-muted"
+        = f.text_field :base, value: params[:base], placeholder: "HEAD", autocomplete: "off", spellcheck: false, class: "w-40 px-2 py-1 rounded border border-edge bg-canvas font-mono text-fg placeholder:text-fg-muted focus:outline-none focus:border-accent"
+        = f.button icon(:fas, :arrow_right, "Compare"), type: :submit, name: nil, class: change_button_classes
+
+      button type="button" class="#{ change_button_classes }" data-action="changes#expand"
+        = icon(:fas, :angles_down, "Expand all")
+
+      button type="button" class="#{ change_button_classes }" data-action="changes#collapse"
+        = icon(:fas, :angles_up, "Collapse all")
+
+  .flex.items-start.grow
+
+    = render "git_diff_live/changes/nav"
+
+    main.flex.flex-col.gap-3.grow.min-w-0.p-3
+
+      = render "git_diff_live/changes/empty"
+
+      / The files, by path. refresh.turbo_stream replaces, inserts and removes them one at a time.
+      .flex.flex-col.gap-3#changed_files
+        = render partial: "git_diff_live/changes/file", collection: @files, as: :file

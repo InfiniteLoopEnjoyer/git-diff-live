@@ -1,0 +1,2 @@
+/ Redraws one file in place, open: its "Whole file" / "Changes only" links and the "Show them" link of a large one.
+= turbo_stream.replace @file.dom_id, partial: "git_diff_live/changes/file", locals: { file: @file, shown: @shown, open: true }

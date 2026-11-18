@@ -1,0 +1,29 @@
+/ Brings a page up to date with the working tree. @held is what the page holds (path => digest); @files is what is there now.
+/ Only the difference is sent: a file whose digest the page already holds is left alone, however many of those there are.
+
+/ Gone from the changes: committed, reverted or deleted again.
+- @gone.each do | path |
+  = turbo_stream.remove GitDiffLive::Diff::ChangedFile.dom_id(path)
+
+/ Last file first, so a new file always has its neighbour to go in front of: the file after it is either on the page already or was put there a moment ago.
+- following = nil
+- @files.reverse_each do | file |
+
+  - unless @held[file.path] == file.digest
+    - drawn = @whole.include?(file.path) ? @diff.whole(file) : file
+    - locals = { file: drawn, shown: @shown.include?(file.path) }
+
+    - if @held.key?(file.path)
+      / Changed. Morphed, so the reader's place in it survives, and it stays open or closed as they left it.
+      = turbo_stream.replace file.dom_id, partial: "git_diff_live/changes/file", locals: locals, method: :morph
+    - elsif following
+      = turbo_stream.before following.dom_id, partial: "git_diff_live/changes/file", locals: locals
+    - else
+      = turbo_stream.append "changed_files", partial: "git_diff_live/changes/file", locals: locals
+
+  - following = file
+
+/ The counts and the list of files are small: sent whole every time. The summary carries the new fingerprint.
+= turbo_stream.replace "changes_summary", partial: "git_diff_live/changes/summary", method: :morph
+= turbo_stream.replace "changes_nav", partial: "git_diff_live/changes/nav", method: :morph
+= turbo_stream.replace "changes_empty", partial: "git_diff_live/changes/empty"

@@ -1,0 +1,17 @@
+doctype html
+/ The changes page's own layout: dark, with its own stylesheet (prebuilt, app/assets/builds/git_diff_live.css) and import map (GitDiffLive.importmap). The host supplies only the icon font.
+html lang="en"
+  head
+    title Changes | #{ GitDiffLive.configuration.root.basename }
+    meta charset="utf-8"
+    meta name="viewport" content="width=device-width, initial-scale=1.0"
+    meta name="turbo-cache-control" content="no-cache"
+
+    = csrf_meta_tags
+    = csp_meta_tag
+
+    = stylesheet_link_tag(*GitDiffLive.configuration.stylesheets, "git_diff_live", media: :all, data: { turbo_track: :reload })
+    = javascript_importmap_tags "application", importmap: GitDiffLive.importmap
+
+  body.min-h-screen.text-sm.bg-canvas.text-fg.scheme-dark
+    = yield
