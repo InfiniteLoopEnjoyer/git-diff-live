@@ -82,8 +82,9 @@ module GitDiffLive
     # many files to show one costs little.
     class ChangedFile
 
-      # +comments+ are the ones written about this file within the comparison,
-      # placed or not (placed_comments).
+      # +comments+ are the ones written about this file within the comparison:
+      # those on the file itself (file_comments) and those on its lines, placed
+      # or not (placed_comments).
       attr_reader :status, :path, :old_path, :comments
 
       def initialize(status:, path:, old_path: nil, patch: "", untracked: false, unreadable: false, comments: [])
@@ -176,6 +177,18 @@ module GitDiffLive
         hunks.flat_map { | hunk | hunk.rows.filter_map { it.public_send(side) } }.select { it.kind == kind }
       end
 
+      # The comments on the file as a whole, drawn under its heading.
+      def file_comments
+        comments.select(&:file?)
+      end
+
+      # The file itself is the change, more than any line of it: it was added
+      # or deleted, or it has no changed lines at all (moved, binary). A
+      # comment on the file is then comment enough.
+      def whole_change?
+        hunks.empty? || [ :added, :deleted ].include?(status)
+      end
+
       # The comments that still have their line here, by where they go:
       # { [ :new, 12 ] => [ comment ] }. A comment goes beside the changed line
       # whose text it was written about, the nearest to its own line number
@@ -185,7 +198,7 @@ module GitDiffLive
         @placed_comments ||= begin
           numbers = [ :old, :new ].to_h { | side | [ side, changed_lines(side).group_by(&:text).transform_values { it.map(&:number) } ] }
 
-          comments.each_with_object({}) do | comment, placed |
+          comments.reject(&:file?).each_with_object({}) do | comment, placed |
             number = numbers[comment.side][comment.code]&.min_by { (it - comment.line).abs }
 
             (placed[[ comment.side, number ]] ||= []) << comment if number

@@ -81,6 +81,12 @@ module GitDiffLive
       safe_join(comment.body.split(/(`[^`]+`)/).map { it.match?(/\A`.+`\z/) ? tag.code(it[1..-2], class: "px-1 rounded-xs bg-canvas font-mono") : it })
     end
 
+    # The comments on a file as one line of plain text, for the heading of a
+    # closed file: there the backticks would only be noise.
+    def change_comment_line(file)
+      file.file_comments.map(&:body).join(" ").delete("`")
+    end
+
     # The status glyph beside a file's name. Each icon is a literal icon(:fas, :name)
     # call so fontawesome_subsetter finds it.
     def change_status_icon(file)

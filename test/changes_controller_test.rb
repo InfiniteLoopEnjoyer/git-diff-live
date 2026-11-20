@@ -198,6 +198,30 @@ class ChangesControllerTest < ActionDispatch::IntegrationTest
     assert_select "[data-comment]", 1
   end
 
+  test "comments: one on a file is drawn under its heading, and on one line in the heading for when the file is closed" do
+    comment "c_deleted.rb", :file, nil, "Nothing reads `gone` any more."
+    comment "logo.png", :file, nil, "The new logo."
+
+    get "/changes"
+
+    assert_select "details##{ changed_file("c_deleted.rb").dom_id }:not([open])" do
+      assert_select "summary span.truncate[title=?]", "Nothing reads gone any more.", text: "Nothing reads gone any more." do
+        assert_select "i.fas.fa-comment"
+      end
+      assert_select "summary + div [data-comment=file]", text: /Nothing reads gone any more/, count: 1
+      assert_select "[data-comment=file] code", text: "gone"
+      # The file's lines are still drawn, in their four columns.
+      assert_select "[data-rows] + div", 0
+    end
+
+    assert_select "details##{ changed_file("logo.png").dom_id }" do
+      assert_select "summary + div [data-comment=file]", text: "The new logo."
+      assert_select "div", text: "Binary file, not shown."
+    end
+
+    assert_select "[data-comment]", 2
+  end
+
   test "comments: a new one redraws its file, and only that file" do
     page = held
 

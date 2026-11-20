@@ -22,11 +22,37 @@ class CliTest < ActiveSupport::TestCase
         +2    |   price * quantity * tax
 
     TEXT
-    assert_includes output, "a_new_name.rb (renamed)\n  @@ -7,7 +7,7 @@ line 6\n  -10   | line 10\n  +10   | line ten\n\n"
+    assert_includes output, "a_new_name.rb (renamed from a_old_name.rb)\n  @@ -7,7 +7,7 @@ line 6\n  -10   | line 10\n  +10   | line ten\n\n"
     assert_includes output, "c_deleted.rb (deleted)\n  @@ -1 +0,0 @@\n  -1    | gone\n\n"
     assert_includes output, "e_untracked.rb (added)\n  @@ -0,0 +1,2 @@\n  +1    | first\n  +2    | second\n\n"
-    assert_match(/^5 changes without a comment\.$/, output)
+    assert_includes output, "logo.png (modified)\n  Binary, no lines to comment on. Comment on the file: logo.png:file\n\n"
+    assert_match(/^6 changes without a comment\.$/, output)
+  end
+
+  test "changes: a comment on the file is enough for a binary file, a moved one and a deleted one, not for an edited one" do
+    scratch_git "checkout", "--quiet", "HEAD", "--", "b_modified.rb"
+    scratch_git "mv", "b_modified.rb", "b_moved.rb"
+
+    _, output = run_cli "changes"
+    assert_includes output, "b_moved.rb (renamed from b_modified.rb)\n  Content unchanged, no lines to comment on. Comment on the file: b_moved.rb:file\n\n"
+
+    status, = run_cli "comment", input: <<~TEXT
+      logo.png:file The new logo.
+      b_moved.rb:file Moved beside the code that calls it.
+      c_deleted.rb:file Nothing reads this file any more.
+      a_new_name.rb:file Renamed to match its class.
+    TEXT
+    assert_equal 0, status
+
+    _, output = run_cli "changes"
     assert_not_includes output, "logo.png"
+    assert_not_includes output, "b_moved.rb"
+    assert_not_includes output, "c_deleted.rb"
+    assert_includes output, "a_new_name.rb (renamed from a_old_name.rb)\n  file has: Renamed to match its class.\n  @@ -7,7 +7,7 @@ line 6\n"
+    assert_match(/^3 changes without a comment\.$/, output)
+
+    _, output = run_cli "changes", "--all", "c_deleted.rb"
+    assert_includes output, "c_deleted.rb (deleted)\n  file has: Nothing reads this file any more.\n  @@ -1 +0,0 @@\n  -1    | gone\n"
   end
 
   test "changes: a hunk is one change, the unchanged lines between its runs shown without a reference" do
@@ -44,7 +70,7 @@ class CliTest < ActiveSupport::TestCase
 
     _, output = run_cli "changes"
     assert_not_includes output, "b_modified.rb"
-    assert_match(/^4 changes without a comment\.$/, output)
+    assert_match(/^5 changes without a comment\.$/, output)
 
     _, output = run_cli "changes", "--all"
     assert_includes output, "  +2    |   price * quantity * tax\n  +2 has: Tax is part of the total now.\n"
@@ -84,6 +110,14 @@ class CliTest < ActiveSupport::TestCase
     assert_equal "1 comment written to .git_diff_live/comments.jsonl.\n", output
     assert_includes error, "Not written: b_modified.rb:+3: +3 is not an added line; the nearest are +2\n"
     assert_includes error, "Not written: b_modified.rb: not a reference"
+
+    status, _, error = run_cli "comment", "logo.png:+1", "The new logo."
+    assert_equal 1, status
+    assert_includes error, "Not written: logo.png:+1: +1 is not an added line; the file has none (logo.png:file comments on the file)\n"
+
+    status, _, error = run_cli "comment", "nope.rb:file", "No such file."
+    assert_equal 1, status
+    assert_includes error, "Not written: nope.rb:file: nope.rb is not a changed file\n"
   end
 
   test "comment: against an earlier base, committed work is commented too" do

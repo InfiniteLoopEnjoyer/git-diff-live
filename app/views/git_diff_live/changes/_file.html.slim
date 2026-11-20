@@ -24,6 +24,10 @@ details.group.rounded.border.border-edge.bg-surface.scroll-mt-2 id=file.dom_id o
 
     span.shrink-0.font-mono.text-xs = change_counts(file.additions, file.deletions)
 
+    / The comment on the file, on one line while the file is closed: a deleted file starts that way, and why it went is what the reader wants of it. Open, it is drawn in full under the heading.
+    - if file.file_comments.any?
+      span.min-w-0.truncate.text-xs.text-fg-muted.group-open:hidden title=change_comment_line(file) = icon(:fas, :comment, change_comment_line(file))
+
     span.flex.items-center.gap-4.shrink-0.ml-auto
 
       / The whole file only says more than the changes do for a file that has both sides.
@@ -36,6 +40,14 @@ details.group.rounded.border.border-edge.bg-surface.scroll-mt-2 id=file.dom_id o
       / Opens the file in the editor at its first change. A deleted file is not there to open.
       - unless file.status == :deleted
         = link_to icon(:fas, :arrow_up_right_from_square, "Open"), change_editor_url(@diff.root.join(file.path), file.first_changed_line), class: change_link_classes, title: "Open in the editor at line #{ file.first_changed_line }"
+
+  / The comments on the file as a whole (a delete, a move, a binary file), each a bubble with its tail towards the heading.
+  - if file.file_comments.any?
+    .flex.flex-col.gap-2.px-3.pt-2.pb-3.border-t.border-edge.text-xs.leading-5
+      - file.file_comments.each do | comment |
+        .relative.self-start.max-w-3xl.px-3.py-2.rounded-lg.bg-raised.text-fg.wrap-anywhere data-comment=comment.side
+          span.absolute.-top-1.left-4.size-2.rotate-45.bg-raised
+          = change_comment(comment)
 
   - if file.binary?
     .px-3.py-2.border-t.border-edge.text-fg-muted Binary file, not shown.

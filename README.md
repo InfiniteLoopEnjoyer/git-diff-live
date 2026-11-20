@@ -78,10 +78,11 @@ bundle exec git_diff_live changes          # the changes that have no comment ye
 bundle exec git_diff_live comment <<'EOF'  # one comment a line: path, reference, comment
 app/models/order.rb:+41 Totals were computed before discounts applied, so a discounted order was invoiced at full price.
 app/models/order.rb:-58 Nothing has called `legacy_total` since the invoice rewrite.
+app/models/legacy_invoice.rb:file Deleted: invoices are built by `Invoice` since the rewrite.
 EOF
 ```
 
-`+41` is line 41 of the file as it is now; `-58` is line 58 of the file as it was. `--base <revision>` compares with something other than `HEAD`. `skills/explain-changes/SKILL.md` is the Claude Code skill that drives these two commands at the end of a session: copy it to `.claude/skills/explain-changes/` in the app.
+There are two kinds. A comment on a **line** is drawn beside it: `+41` is line 41 of the file as it is now; `-58` is line 58 of the file as it was. A comment on a **file** (`path:file`) is drawn under the file's heading, for changes that are the whole file: a delete, a move, a binary file. It also shows on one line in the heading while the file is collapsed, as a deleted file is to begin with. `--base <revision>` compares with something other than `HEAD`. `skills/explain-changes/SKILL.md` is the Claude Code skill that drives these two commands at the end of a session: copy it to `.claude/skills/explain-changes/` in the app.
 
 ### Where they are kept
 
@@ -89,7 +90,7 @@ In `.git_diff_live/comments.jsonl`, one JSON object a line, in the repository. C
 
 A comparison shows the comments that file **gained** between its two ends, read off the same `git diff` as the changed files. So a comment written for a commit shows with that commit: in the working tree before it is committed, in `?base=<its parent>&head=<it>` ever after, and in any wider comparison that spans it. Nothing earlier leaks in, and the file itself is never listed as a change.
 
-A comment is anchored to its line's text, not its position. It stays beside its code when lines above come and go, and it is left out once that code has been changed again. The command line removes such a comment the next time it writes, as long as it has not been committed.
+A comment on a line is anchored to the line's text, not its position. It stays beside its code when lines above come and go, and it is left out once that code has been changed again. The command line removes such a comment the next time it writes, as long as it has not been committed. A comment on a file shows for as long as the file is one of the changes.
 
 The file only grows, at roughly 250 bytes a comment. `.git_diff_live/.gitattributes` gives it git's `union` merge, so two branches that each added comments merge without a conflict.
 

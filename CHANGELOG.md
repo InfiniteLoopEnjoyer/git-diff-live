@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] - 2026-11-20
+
+### Added
+
+- Comments on a file as a whole (`git_diff_live comment path:file ...`), drawn under the file's heading and, while the file is collapsed, on one line in it. For a deleted, moved or binary file, which has no line of its own to comment on.
+- `git_diff_live changes` lists a file with no changed lines (moved, binary) as a change to comment on, and names what a renamed file was renamed from.
+
 ## [0.2.0] - 2026-11-20
 
 ### Added

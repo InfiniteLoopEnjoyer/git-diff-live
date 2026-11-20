@@ -27,6 +27,45 @@ class CommentsTest < ActiveSupport::TestCase
     assert_equal [ [ :old, 1 ] ], comparison.file("c_deleted.rb").placed_comments.keys
   end
 
+  test "write: a comment on a file is stored without a line, and belongs to the file" do
+    write [ "c_deleted.rb", :file, nil, "Nothing reads this file any more." ], [ "logo.png", :file, nil, "The new logo." ]
+
+    assert_equal(
+      [ { "path" => "c_deleted.rb", "side" => "file", "comment" => "Nothing reads this file any more." }, { "path" => "logo.png", "side" => "file", "comment" => "The new logo." } ],
+      store_lines.map { JSON.parse(it) }
+    )
+    assert_equal [ "Nothing reads this file any more." ], comparison.file("c_deleted.rb").file_comments.map(&:body)
+    assert_empty comparison.file("c_deleted.rb").placed_comments
+    assert_equal "logo.png:file", comparison.file("logo.png").file_comments.sole.reference
+  end
+
+  test "write: a second comment on a file takes the first one's place, beside its comments on lines" do
+    write [ "b_modified.rb", :file, nil, "First thought." ], [ "b_modified.rb", :new, 2, "Tax is part of the total now." ]
+    write [ "b_modified.rb", :file, nil, "Second thought." ]
+
+    assert_equal [ "Tax is part of the total now.", "Second thought." ], comparison.file("b_modified.rb").comments.map(&:body)
+    assert_equal 2, store_lines.size
+  end
+
+  test "write: a comment on a file that is no longer a change is taken out, and one stays through further edits" do
+    write [ "b_modified.rb", :file, nil, "About the tax." ], [ "e_untracked.rb", :file, nil, "A new file." ]
+
+    scratch_write "b_modified.rb", "def total\n  0\nend\n"
+    @root.join("e_untracked.rb").delete
+    result = write [ "d_added.rb", :file, nil, "Staged." ]
+
+    assert_equal 1, result.removed
+    assert_equal [ "About the tax.", "Staged." ], store_lines.map { JSON.parse(it)["comment"] }
+  end
+
+  test "a comment on a file changes that file's digest" do
+    before = comparison.file("logo.png").digest
+
+    write [ "logo.png", :file, nil, "The new logo." ]
+
+    assert_not_equal before, comparison.file("logo.png").digest
+  end
+
   test "write: a line that is not a changed one is refused, with the nearest that are" do
     result = write [ "a_new_name.rb", :new, 9, "Nine did not change." ], [ "nope.rb", :new, 1, "No such file." ], [ "b_modified.rb", :new, 2, " " ]
 

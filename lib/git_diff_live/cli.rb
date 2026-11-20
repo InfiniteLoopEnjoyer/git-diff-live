@@ -12,10 +12,12 @@ module GitDiffLive
   #   git_diff_live comment <<'EOF'         # one comment a line: reference, then the comment
   #   app/models/user.rb:+12 Why this line was added.
   #   app/models/user.rb:-30 Why that one was removed.
+  #   app/models/guest.rb:file Why this file was deleted.
   #   EOF
   #
-  # A reference names a changed line: +12 is line 12 of the file as it is now,
-  # -30 is line 30 of the file as it was at the base.
+  # A reference names a changed line (+12 is line 12 of the file as it is now,
+  # -30 is line 30 of the file as it was at the base) or, with "file", the
+  # changed file as a whole.
   class CLI
 
     USAGE = <<~TEXT
@@ -31,9 +33,12 @@ module GitDiffLive
 
                   app/models/user.rb:+12 Why this line was added.
                   app/models/user.rb:-30 Why this line was removed.
+                  app/models/guest.rb:file Why this file was deleted.
 
                 +12 is line 12 of the file now; -30 is line 30 of the file at the
-                base. The page draws the comment beside that line.
+                base. The page draws the comment beside that line. "file" is the
+                file as a whole (a delete, a move, a binary file): the page draws
+                the comment under the file's heading.
 
       --base    The commit the working tree is compared with. Default: HEAD.
     TEXT
@@ -44,8 +49,9 @@ module GitDiffLive
 
     SHOWN_WIDTH = 160
 
-    # "app/models/user.rb:+12 Why this line was added." The path may hold spaces.
-    LINE = /\A(?<path>.+?):(?<sign>[+-])(?<line>\d+)(?:\s+(?<body>.*))?\z/
+    # "app/models/user.rb:+12 Why this line was added.", or ":file" for the
+    # file as a whole. The path may hold spaces.
+    LINE = /\A(?<path>.+?):(?:(?<sign>[+-])(?<line>\d+)|file)(?:\s+(?<body>.*))?\z/
 
     def initialize(root: Dir.pwd, input: $stdin, output: $stdout, error: $stderr)
       @root   = root
@@ -81,20 +87,27 @@ module GitDiffLive
 
     # A change is a hunk: the changed lines git drew together, a comment on
     # any of them being its comment. That is the page's unit too, each hunk
-    # under its own heading.
+    # under its own heading. A file with no hunk (moved, binary) is one change,
+    # and so is a file added or deleted once it has a comment on the file.
     def changes(paths, base:, all: false, full: false)
-      files = Diff.new(root: @root, base: base).files
+      files = Diff.new(root: @root, base: base).files.reject { it.status == :unmerged }
       files = files.select { | file | paths.any? { file.path == it || file.path.start_with?("#{ it.chomp("/") }/") } } if paths.any?
       left  = 0
 
       files.each do | file |
-        hunks = file.hunks.map { | hunk | [ hunk, hunk.rows.flat_map { file.comments_beside(it) } ] }
-        open  = hunks.select { it.last.empty? }
-        left += open.size
+        covered = file.whole_change? && file.file_comments.any?
+        hunks   = file.hunks.map { | hunk | [ hunk, hunk.rows.flat_map { file.comments_beside(it) } ] }
+        open    = covered ? [] : hunks.select { it.last.empty? }
+        bare    = file.hunks.empty? && !covered
+        left   += open.size + (bare ? 1 : 0)
 
-        next if (all ? hunks : open).empty?
+        next unless all || bare || open.any?
 
-        @output.puts "#{ file.path } (#{ file.status })"
+        @output.puts "#{ file.path } (#{ file.status }#{ " from #{ file.old_path }" if file.old_path })"
+        file.file_comments.each { @output.puts "  file has: #{ it.body }" }
+
+        @output.puts "  #{ file.binary? ? "Binary" : "Content unchanged" }, no lines to comment on. Comment on the file: #{ file.path }:file" if bare
+        @output.puts if file.hunks.empty?
 
         (all ? hunks : open).each do | hunk, comments |
           @output.puts "  #{ hunk.heading }"
@@ -143,9 +156,9 @@ module GitDiffLive
 
       given.each do | line |
         if (match = LINE.match(line.strip))
-          notes << [ match[:path], match[:sign] == "-" ? :old : :new, match[:line].to_i, match[:body] ]
+          notes << [ match[:path], { "-" => :old, "+" => :new, nil => :file }.fetch(match[:sign]), match[:line]&.to_i, match[:body] ]
         else
-          unread << [ line.strip[/\A\S+/], "not a reference: write path:+LINE for an added line, path:-LINE for a removed one" ]
+          unread << [ line.strip[/\A\S+/], "not a reference: write path:+LINE for an added line, path:-LINE for a removed one, path:file for the file" ]
         end
       end
 
