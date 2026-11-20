@@ -5,7 +5,8 @@ A live, side-by-side page of your working tree's git changes, for Rails apps in 
 - Every changed file on one page: before on the left, after on the right, removed in red, added in green, and the words that changed marked inside each line.
 - Staged, unstaged and untracked work together. Renames shown as `old → new`.
 - **Live**: the page redraws what changes as you (or an agent) edit, without losing your place.
-- "Whole file" per file, "Compare with" any revision (`main`, `HEAD~3`, a SHA), and "Open" to jump to the file in your editor.
+- "Whole file" per file, compare from any revision (`main`, `HEAD~3`, a SHA) to the working tree or to another revision, and "Open" to jump to the file in your editor.
+- **Comments**: a bubble beside a change saying why it was made, written by the agent that made it and committed with the code.
 
 It is a mountable Rails engine with its own layout, stylesheet and JavaScript. Nothing is added to your app's pages, Tailwind build or import map.
 
@@ -64,8 +65,33 @@ end if defined?(GitDiffLive)
 | --- | --- |
 | `/changes` | the working tree against `HEAD` |
 | `/changes?base=main` | against any revision git understands |
+| `/changes?base=HEAD~1&head=HEAD` | one commit against another: here, the last commit on its own |
 
 A deleted file starts collapsed. A file with more than 1,500 changed lines is drawn when you ask for it.
+
+## Comments
+
+A change can carry a comment: a sentence or two on why it was made, drawn as a bubble in a column beside the code. They are meant to be written by the agent that made the change, while it still knows the reason.
+
+```sh
+bundle exec git_diff_live changes          # the changes that have no comment yet, each changed line with its reference
+bundle exec git_diff_live comment <<'EOF'  # one comment a line: path, reference, comment
+app/models/order.rb:+41 Totals were computed before discounts applied, so a discounted order was invoiced at full price.
+app/models/order.rb:-58 Nothing has called `legacy_total` since the invoice rewrite.
+EOF
+```
+
+`+41` is line 41 of the file as it is now; `-58` is line 58 of the file as it was. `--base <revision>` compares with something other than `HEAD`. `skills/explain-changes/SKILL.md` is the Claude Code skill that drives these two commands at the end of a session: copy it to `.claude/skills/explain-changes/` in the app.
+
+### Where they are kept
+
+In `.git_diff_live/comments.jsonl`, one JSON object a line, in the repository. Commit it with the code it explains.
+
+A comparison shows the comments that file **gained** between its two ends, read off the same `git diff` as the changed files. So a comment written for a commit shows with that commit: in the working tree before it is committed, in `?base=<its parent>&head=<it>` ever after, and in any wider comparison that spans it. Nothing earlier leaks in, and the file itself is never listed as a change.
+
+A comment is anchored to its line's text, not its position. It stays beside its code when lines above come and go, and it is left out once that code has been changed again. The command line removes such a comment the next time it writes, as long as it has not been committed.
+
+The file only grows, at roughly 250 bytes a comment. `.git_diff_live/.gitattributes` gives it git's `union` merge, so two branches that each added comments merge without a conflict.
 
 ### Open in the editor
 
@@ -79,9 +105,12 @@ There is no file watcher and no WebSocket. Every `poll_interval` seconds the pag
 
 The engine does not ask anyone to sign in: it inherits from `ActionController::Base`, not your `ApplicationController`. What keeps it private is `config.enabled`, which is true only in the development and test environments unless you set it. It shows the source of your working tree to whoever can reach it, so do not enable it on a server other people can reach.
 
-## Claude Code skill
+## Claude Code skills
 
-`skills/show-changes/SKILL.md` is a skill that opens the page at the end of a session (`/show-changes`, or `/show-changes main`). Copy it to `.claude/skills/show-changes/` in the app and set its URL.
+Copy them to `.claude/skills/` in the app.
+
+- `skills/show-changes/SKILL.md` opens the page at the end of a session (`/show-changes`, or `/show-changes main`). Set its URL.
+- `skills/explain-changes/SKILL.md` writes the comments (see Comments). The agent runs it by itself when it has finished changing code; a line in the app's `CLAUDE.md` makes that dependable.
 
 ## Development
 

@@ -19,12 +19,16 @@ Gem::Specification.new do | spec |
   spec.files = Dir[
     "app/**/*",
     "config/**/*",
+    "exe/*",
     "lib/**/*",
+    "skills/**/*",
     "CHANGELOG.md",
     "LICENSE.txt",
     "README.md"
   ]
 
+  spec.bindir        = "exe"
+  spec.executables   = [ "git_diff_live" ]
   spec.require_paths = [ "lib" ]
 
   spec.add_dependency "railties", ">= 7.1"

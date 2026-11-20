@@ -1,5 +1,6 @@
 require_relative "git_diff_live/version"
 require_relative "git_diff_live/diff"
+require_relative "git_diff_live/comments"
 
 # A live, side-by-side page of the working tree's git changes, as a mountable
 # Rails engine.
@@ -12,7 +13,8 @@ require_relative "git_diff_live/diff"
 #   # config/routes.rb
 #   mount GitDiffLive::Engine => "/changes" if Rails.env.development?
 #
-# See Configuration for the options.
+# See Configuration for the options, and Comments for the comments drawn
+# beside the changes.
 module GitDiffLive
 
   class << self

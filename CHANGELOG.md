@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.2.0] - 2026-11-20
+
+### Added
+
+- Comments: a bubble beside a change saying why it was made. Written with the new `git_diff_live` command (`changes`, `comment`), kept in `.git_diff_live/comments.jsonl` and committed with the code; a comparison shows the comments written within it.
+- `skills/explain-changes`: the Claude Code skill an agent writes the comments with.
+- Compare two commits: `?base=HEAD~1&head=HEAD`, the "to" field beside "From".
+
+### Changed
+
+- The "Compare with" field is now "From", with "to" beside it.
+
 ## [0.1.0] - 2026-11-18
 
 ### Added

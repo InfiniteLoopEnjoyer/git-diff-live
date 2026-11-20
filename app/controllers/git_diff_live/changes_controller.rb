@@ -4,7 +4,12 @@ module GitDiffLive
   # commit, old on the left and new on the right (GitDiffLive::Diff).
   #
   # +base+ is the commit to compare with, HEAD unless given: any revision git
-  # understands (a SHA, a branch, HEAD~3).
+  # understands (a SHA, a branch, HEAD~3). +head+ is the commit to compare
+  # with it instead of the working tree: base=HEAD~1&head=HEAD is the last
+  # commit on its own.
+  #
+  # Beside each change goes the comment written about it, if there is one
+  # (GitDiffLive::Comments).
   #
   # == Live reload
   #
@@ -56,7 +61,7 @@ module GitDiffLive
     private
 
     def set_diff
-      @diff = Diff.new(root: GitDiffLive.configuration.root, base: params[:base].presence || "HEAD", context: GitDiffLive.configuration.context)
+      @diff = Diff.new(root: GitDiffLive.configuration.root, base: params[:base].presence || "HEAD", head: params[:head].presence, context: GitDiffLive.configuration.context)
     end
 
     def unknown_revision(error)

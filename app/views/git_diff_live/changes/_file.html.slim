@@ -2,7 +2,7 @@
 / locals: file (GitDiffLive::Diff::ChangedFile; file.whole? when it is drawn complete), shown (draw it although it is large), open (true when the reader has just asked for it)
 / The data attributes are what the page holds of this file: changes_controller.js posts them to refresh, which redraws the file only if its digest has moved on, and the same way (whole, shown).
 - shown = local_assigns[:shown]
-- file_params = { path: file.path, **change_base_params, show: (1 if shown) }.compact
+- file_params = { path: file.path, **change_range_params, show: (1 if shown) }.compact
 
 / A deleted file starts closed: its whole content is red, which is rarely what a review needs to read. However the reader leaves a file, it stays that way through a refresh (changes_controller.js#keepOpenState).
 details.group.rounded.border.border-edge.bg-surface.scroll-mt-2 id=file.dom_id open=(local_assigns[:open] || file.status != :deleted) data-changes-target="file" data-path=file.path data-digest=file.digest data-whole=("true" if file.whole?) data-shown=("true" if shown)
@@ -53,25 +53,42 @@ details.group.rounded.border.border-edge.bg-surface.scroll-mt-2 id=file.dom_id o
 
   - else
     / Four columns: old number, old line, new number, new line. Each row's cells share a grid row, so the two sides stay level when a long line wraps.
-    .grid.border-t.border-edge.bg-canvas.font-mono.text-xs.leading-5 class="grid-cols-[3.25rem_minmax(0,1fr)_3.25rem_minmax(0,1fr)] [tab-size:4]"
+    / A file with comments has a fifth column for them. The rows come in groups (change_row_groups), each a subgrid on the four code columns, and a group's comments sit beside it in the fifth: a comment taller than its group leaves the space under the group's last row, not between its lines.
+    - commented = file.placed_comments.any?
+
+    .grid.border-t.border-edge.bg-canvas.font-mono.text-xs.leading-5 class="#{ change_grid_classes(file) } [tab-size:4]"
 
       - file.hunks.each do | hunk |
 
         - unless file.whole?
-          .col-span-4.px-3.bg-surface.text-fg-muted.truncate = hunk.heading
+          .col-span-full.px-3.bg-surface.text-fg-muted.truncate = hunk.heading
 
-        - hunk.rows.each do | row |
+        - change_row_groups(file, hunk).each do | rows, comments |
 
-          - if row.old
-            div class="px-2 text-right select-none #{ change_number_classes(row.old) }" = row.old.number
-            div class="px-2 whitespace-pre-wrap wrap-anywhere #{ change_code_classes(row.old) }" = change_code(row.old)
-          - else
-            .bg-surface
-            .bg-surface
+          .col-start-1.col-span-4.grid.grid-cols-subgrid.content-start data-rows=true
 
-          - if row.new
-            div class="px-2 text-right select-none border-l border-edge #{ change_number_classes(row.new) }" = row.new.number
-            div class="px-2 whitespace-pre-wrap wrap-anywhere #{ change_code_classes(row.new) }" = change_code(row.new)
-          - else
-            .bg-surface.border-l.border-edge
-            .bg-surface
+            - rows.each do | row |
+
+              - if row.old
+                div class="px-2 text-right select-none #{ change_number_classes(row.old) }" = row.old.number
+                div class="px-2 whitespace-pre-wrap wrap-anywhere #{ change_code_classes(row.old) }" = change_code(row.old)
+              - else
+                .bg-surface
+                .bg-surface
+
+              - if row.new
+                div class="px-2 text-right select-none border-l border-edge #{ change_number_classes(row.new) }" = row.new.number
+                div class="px-2 whitespace-pre-wrap wrap-anywhere #{ change_code_classes(row.new) }" = change_code(row.new)
+              - else
+                .bg-surface.border-l.border-edge
+                .bg-surface
+
+          / The comments on this group's first row, each a bubble with its tail towards the code. They follow the reader down a change longer than the window, under the file's heading.
+          - if commented
+            .col-start-5.px-3.border-l.border-edge.bg-surface.font-sans
+              - if comments.any?
+                .sticky.top-11.flex.flex-col.gap-2.py-1
+                  - comments.each do | comment |
+                    .relative.px-3.py-2.rounded-lg.bg-raised.text-fg.wrap-anywhere data-comment=comment.side
+                      span.absolute.top-2.-left-1.size-2.rotate-45.bg-raised
+                      = change_comment(comment)

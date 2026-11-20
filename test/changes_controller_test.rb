@@ -76,7 +76,7 @@ class ChangesControllerTest < ActionDispatch::IntegrationTest
       assert_select "template details[open][data-whole=true][data-digest=?]", file.digest
       assert_select "template summary a[data-turbo-stream][href=?]", "/changes/file?path=a_new_name.rb", text: /Changes only/
       # Twenty lines on each side: number and text, 80 cells.
-      assert_select "template .grid > div", 80
+      assert_select "template [data-rows] > div", 80
     end
   end
 
@@ -88,8 +88,8 @@ class ChangesControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
     assert_select "template details:not([data-whole])"
     assert_select "template summary a[href=?]", "/changes/file?path=a_new_name.rb&whole=1", text: /Whole file/
-    # The hunk heading, then lines 7 to 13: seven rows of four cells.
-    assert_select "template .grid > div", 29
+    # Lines 7 to 13: seven rows of four cells.
+    assert_select "template [data-rows] > div", 28
   end
 
   test "file: an unknown path, or one outside the changes, is not found" do
@@ -148,6 +148,81 @@ class ChangesControllerTest < ActionDispatch::IntegrationTest
     assert_select "summary a[href*='base=HEAD~1']", text: /Whole file/
     assert_select "[data-changes-fingerprint-url-value=?]", "/changes/fingerprint?base=HEAD~1"
     assert_select "[data-changes-refresh-url-value=?]", "/changes/refresh?base=HEAD~1"
+  end
+
+  test "compares two commits, leaving the working tree out" do
+    scratch_commit "the session's work"
+    scratch_write "b_modified.rb", "def total\n  0\nend\n"
+    scratch_commit "one more"
+    scratch_write "g_untracked.rb", "new\n"
+
+    get "/changes", params: { base: "HEAD~2", head: "HEAD~1" }
+
+    assert_select "details", 6
+    assert_select "details[data-path='g_untracked.rb']", 0
+    assert_select "div.bg-emerald-950\\/50", text: "price * quantity * tax"
+    assert_select "#changes_summary", text: /HEAD~1\s+against\s+HEAD~2/
+    assert_select "summary a[href*='base=HEAD~2&head=HEAD~1']", text: /Whole file/
+    assert_select "[data-changes-refresh-url-value=?]", "/changes/refresh?base=HEAD~2&head=HEAD~1"
+    assert_select "input[name=head][value='HEAD~1']"
+  end
+
+  test "an unknown head is not found" do
+    get "/changes", params: { head: "no-such-branch" }
+
+    assert_response :not_found
+    assert_match "does not name a commit", response.body
+  end
+
+  test "comments: one is drawn beside the row it was written about, in a column of its own" do
+    comment "b_modified.rb", :new, 2, "Tax is part of the total now: `tax` was left out."
+
+    get "/changes"
+
+    assert_select "details##{ changed_file("b_modified.rb").dom_id } .grid" do
+      # The row above the change, then the change and the row under it beside the comment.
+      assert_select "[data-rows]", 2
+      assert_select "[data-rows] + div [data-comment=new]", text: /Tax is part of the total now/, count: 1
+      assert_select "[data-comment] code", text: "tax"
+    end
+  end
+
+  test "comments: a file without one keeps its four columns, and the store is not listed as a file" do
+    comment "b_modified.rb", :new, 2, "Tax is part of the total now."
+
+    get "/changes"
+
+    assert_select "details", 6
+    assert_select "details[data-path^='.git_diff_live']", 0
+    assert_select "details##{ changed_file("a_new_name.rb").dom_id } [data-rows] + div", 0
+    assert_select "[data-comment]", 1
+  end
+
+  test "comments: a new one redraws its file, and only that file" do
+    page = held
+
+    comment "b_modified.rb", :new, 2, "Tax is part of the total now."
+    post "/changes/refresh", params: page, as: :turbo_stream
+
+    assert_select "template details", 1
+    assert_select "turbo-stream[target=#{ changed_file("b_modified.rb").dom_id }] template [data-comment]", text: /Tax is part of the total now/
+  end
+
+  test "comments: committed with the change, one shows when that commit is compared" do
+    comment "b_modified.rb", :new, 2, "Tax is part of the total now."
+    scratch_commit "the session's work"
+    scratch_write "b_modified.rb", "def total\n  price * quantity * tax\nend\n\ndef later\nend\n"
+    scratch_commit "one more"
+
+    get "/changes", params: { base: "HEAD~2", head: "HEAD~1" }
+    assert_select "[data-comment]", text: /Tax is part of the total now/, count: 1
+
+    get "/changes", params: { base: "HEAD~1", head: "HEAD" }
+    assert_select "details", 1
+    assert_select "[data-comment]", 0
+
+    get "/changes", params: { base: "HEAD~2" }
+    assert_select "[data-comment]", text: /Tax is part of the total now/, count: 1
   end
 
   test "an unknown base is not found" do
@@ -219,7 +294,7 @@ class ChangesControllerTest < ActionDispatch::IntegrationTest
     scratch_write "b_modified.rb", "def total\n  0\nend\n"
     post "/changes/refresh", params: page, as: :turbo_stream
 
-    assert_select "turbo-stream[target=#{ changed_file("a_new_name.rb").dom_id }] template details[data-whole=true] .grid > div", 80
+    assert_select "turbo-stream[target=#{ changed_file("a_new_name.rb").dom_id }] template details[data-whole=true] [data-rows] > div", 80
     assert_select "turbo-stream[target=#{ changed_file("b_modified.rb").dom_id }] template details[data-shown=true]:not([data-whole])"
   end
 
@@ -324,6 +399,10 @@ class ChangesControllerTest < ActionDispatch::IntegrationTest
 
   def changed_file(path)
     GitDiffLive::Diff.new(root: @root).file(path)
+  end
+
+  def comment(path, side, line, body)
+    GitDiffLive::Comments.new(root: @root).write([ [ path, side, line, body ] ])
   end
 
 end

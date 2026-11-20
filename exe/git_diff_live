@@ -1,0 +1,15 @@
+#!/usr/bin/env ruby
+
+# Writes the comments the changes page draws beside each change
+# (GitDiffLive::CLI). Runs in the repository it is called from, whichever
+# folder of it that is.
+
+require "open3"
+
+require "git_diff_live/cli"
+
+root, status = Open3.capture2("git", "rev-parse", "--show-toplevel", err: File::NULL)
+
+abort "git_diff_live: not inside a git repository" unless status.success?
+
+exit GitDiffLive::CLI.new(root: root.strip).run(ARGV)

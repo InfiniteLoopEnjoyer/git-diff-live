@@ -9,6 +9,8 @@ module GitDiffLive
 
     LINK = "text-accent hover:text-accent-hover whitespace-nowrap"
 
+    FIELD = "w-36 px-2 py-1 rounded border border-edge bg-canvas font-mono text-fg placeholder:text-fg-muted focus:outline-none focus:border-accent"
+
     # The line-number cell of one side of a row, by the line's kind.
     NUMBER_CLASSES = {
       context: "text-fg-muted",
@@ -29,12 +31,22 @@ module GitDiffLive
       added:   "rounded-xs bg-emerald-800"
     }.freeze
 
+    # The comparison's columns: old number, old line, new number, new line,
+    # and the comments when the file has any.
+    GRID = "grid-cols-[3.25rem_minmax(0,1fr)_3.25rem_minmax(0,1fr)]"
+
+    COMMENTED_GRID = "grid-cols-[3.25rem_minmax(0,1fr)_3.25rem_minmax(0,1fr)_20rem]"
+
     def change_button_classes
       BUTTON
     end
 
     def change_link_classes
       LINK
+    end
+
+    def change_field_classes
+      FIELD
     end
 
     def change_number_classes(line)
@@ -50,6 +62,23 @@ module GitDiffLive
     # whitespace-pre-wrap and would show it.
     def change_code(line)
       safe_join(line.segments.map { | text, changed | changed ? tag.span(text, class: MARK_CLASSES.fetch(line.kind)) : text })
+    end
+
+    def change_grid_classes(file)
+      file.placed_comments.any? ? COMMENTED_GRID : GRID
+    end
+
+    # A hunk's rows in groups, each with the comments that go beside it:
+    # [ rows, comments ]. A group begins at every row that has a comment and
+    # runs to the next, so a comment has all the rows under it to be as tall
+    # as it needs.
+    def change_row_groups(file, hunk)
+      hunk.rows.slice_before { file.comments_beside(it).any? }.map { | rows | [ rows, file.comments_beside(rows.first) ] }
+    end
+
+    # A comment's text, what it puts between backticks set as code.
+    def change_comment(comment)
+      safe_join(comment.body.split(/(`[^`]+`)/).map { it.match?(/\A`.+`\z/) ? tag.code(it[1..-2], class: "px-1 rounded-xs bg-canvas font-mono") : it })
     end
 
     # The status glyph beside a file's name. Each icon is a literal icon(:fas, :name)
@@ -73,9 +102,9 @@ module GitDiffLive
       ].compact, " ")
     end
 
-    # The query that keeps a link on the commit the page is comparing with.
-    def change_base_params
-      { base: params[:base].presence }.compact
+    # The query that keeps a link on the commits the page is comparing.
+    def change_range_params
+      { base: params[:base].presence, head: params[:head].presence }.compact
     end
 
     # A link the browser hands to an editor, which opens the file at that line.

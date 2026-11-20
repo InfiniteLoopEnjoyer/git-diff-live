@@ -2,6 +2,8 @@ require "digest"
 require "open3"
 require "pathname"
 
+require_relative "comments"
+
 module GitDiffLive
 
   # A repository's working tree compared with a commit, as side-by-side rows:
@@ -16,6 +18,12 @@ module GitDiffLive
   #       hunk.rows.each { | row | row.old&.number; row.new&.segments }
   #     end
   #   end
+  #
+  # With a +head+ it compares two commits instead, and the working tree is not
+  # read at all.
+  #
+  # Each file carries the comments written about its changes within the
+  # comparison (Comments); the store they are kept in is not listed as a file.
   #
   # +context+ is the number of unchanged lines kept around each change;
   # WHOLE_FILE keeps them all, so a file comes back complete.
@@ -49,11 +57,23 @@ module GitDiffLive
     # One side of a row: its line number in that version of the file, its kind
     # (:context, :removed or :added) and its text as [ text, changed ] segments,
     # where a changed segment is the part of a paired line that differs.
-    Line = Data.define(:number, :kind, :segments)
+    Line = Data.define(:number, :kind, :segments) do
+
+      def text
+        segments.sum("") { it.first }
+      end
+
+    end
 
     # A row of the comparison. +old+ is nil beside an added line, +new+ is nil
     # beside a removed one.
-    Row = Data.define(:old, :new)
+    Row = Data.define(:old, :new) do
+
+      def changed?
+        old&.kind == :removed || new&.kind == :added
+      end
+
+    end
 
     # A run of rows, headed by git's "@@ -12,7 +12,9 @@ def create" line.
     Hunk = Data.define(:heading, :rows)
@@ -62,15 +82,18 @@ module GitDiffLive
     # many files to show one costs little.
     class ChangedFile
 
-      attr_reader :status, :path, :old_path
+      # +comments+ are the ones written about this file within the comparison,
+      # placed or not (placed_comments).
+      attr_reader :status, :path, :old_path, :comments
 
-      def initialize(status:, path:, old_path: nil, patch: "", untracked: false, unreadable: false)
+      def initialize(status:, path:, old_path: nil, patch: "", untracked: false, unreadable: false, comments: [])
         @status     = status
         @path       = path
         @old_path   = old_path
         @patch      = patch
         @untracked  = untracked
         @unreadable = unreadable
+        @comments   = comments
       end
 
       def untracked?
@@ -84,9 +107,10 @@ module GitDiffLive
 
       # What this file's change is, in twelve characters: the page holds one
       # per file it shows and sends them back when the tree changes, so only
-      # the files that are no longer the same are drawn again.
+      # the files that are no longer the same are drawn again. A new comment
+      # is such a change.
       def digest
-        @digest ||= Digest::SHA1.hexdigest([ status, old_path, @unreadable, @patch ].join("\0"))[0, 12]
+        @digest ||= Digest::SHA1.hexdigest([ status, old_path, @unreadable, @patch, *comments.flat_map(&:deconstruct) ].join("\0"))[0, 12]
       end
 
       # This file as the whole-file version of +file+: it stands in for it on
@@ -142,6 +166,39 @@ module GitDiffLive
         end
 
         1
+      end
+
+      # The removed lines (:old) or the added lines (:new): the lines a comment
+      # can be about.
+      def changed_lines(side)
+        kind = side == :old ? :removed : :added
+
+        hunks.flat_map { | hunk | hunk.rows.filter_map { it.public_send(side) } }.select { it.kind == kind }
+      end
+
+      # The comments that still have their line here, by where they go:
+      # { [ :new, 12 ] => [ comment ] }. A comment goes beside the changed line
+      # whose text it was written about, the nearest to its own line number
+      # when that text is there more than once. One whose line is gone, or
+      # changed again, has no place.
+      def placed_comments
+        @placed_comments ||= begin
+          numbers = [ :old, :new ].to_h { | side | [ side, changed_lines(side).group_by(&:text).transform_values { it.map(&:number) } ] }
+
+          comments.each_with_object({}) do | comment, placed |
+            number = numbers[comment.side][comment.code]&.min_by { (it - comment.line).abs }
+
+            (placed[[ comment.side, number ]] ||= []) << comment if number
+          end
+        end
+      end
+
+      # The comments to draw beside +row+: those about its removed line, then
+      # those about its added one.
+      def comments_beside(row)
+        return [] if comments.empty?
+
+        placed_comments.values_at(([ :old, row.old.number ] if row.old), ([ :new, row.new.number ] if row.new)).compact.flatten
       end
 
       # A stable id for the file's element on the page.
@@ -225,35 +282,50 @@ module GitDiffLive
 
     end
 
-    attr_reader :base, :context, :root
+    attr_reader :base, :head, :context, :root
 
-    def initialize(root: Dir.pwd, base: "HEAD", context: DEFAULT_CONTEXT)
+    # +head+ is the commit to compare +base+ with; nil for the working tree.
+    def initialize(root: Dir.pwd, base: "HEAD", head: nil, context: DEFAULT_CONTEXT)
       @root    = Pathname.new(root)
       @base    = base.to_s
+      @head    = head.to_s.empty? ? nil : head.to_s
       @context = context
     end
 
-    # The commit the working tree is compared with, as a full SHA. +base+ comes
-    # from the query string: it has to look like a revision (so it can never be
-    # read as an option) and has to name a commit.
+    # The commit compared with, as a full SHA.
     def base_sha
-      @base_sha ||= begin
-        raise UnknownRevision, "#{ base.inspect } is not a revision" unless base.match?(/\A[\w.\/~^@{}][\w.\/~^@{}-]*\z/)
+      @base_sha ||= commit(base)
+    end
 
-        sha, status = git("rev-parse", "--verify", "--quiet", "--end-of-options", "#{ base }^{commit}", allow_failure: true)
-        raise UnknownRevision, "#{ base.inspect } does not name a commit" unless status.success?
+    # The commit compared, as a full SHA; nil when it is the working tree.
+    def head_sha
+      @head_sha ||= (commit(head) if head)
+    end
 
-        sha.strip
-      end
+    def working_tree?
+      head.nil?
     end
 
     def branch
       @branch ||= git("rev-parse", "--abbrev-ref", "HEAD").first.strip
     end
 
-    # Every changed file, tracked or not, by path.
+    # Every changed file, tracked or not, by path, each with the comments
+    # written about it. The comments' own store is not one of them.
     def files
-      @files ||= (tracked_files + untracked_files).sort_by(&:path)
+      @files ||= begin
+        written = comments.group_by(&:path)
+
+        entries.reject { Comments.store?(it[:path]) }
+          .map { ChangedFile.new(**it, comments: written.values_at(it[:path], it[:old_path]).compact.flatten) }
+          .sort_by(&:path)
+      end
+    end
+
+    # The comments written within the comparison: the lines their store gained
+    # between its two ends, read off the same diff as the files.
+    def comments
+      @comments ||= entries.select { it[:path] == Comments::PATH }.flat_map { Comments.added(ChangedFile.new(**it)) }
     end
 
     def file(path)
@@ -263,16 +335,17 @@ module GitDiffLive
     # +file+ again with every unchanged line, for drawing it whole. One more
     # git call, made the first time a whole file is asked for.
     def whole(file)
-      @complete ||= self.class.new(root: root, base: base, context: WHOLE_FILE)
+      @complete ||= self.class.new(root: root, base: base, head: head, context: WHOLE_FILE)
 
       @complete.file(file.path)&.as_whole_of(file) || file
     end
 
-    # A digest that changes whenever the page would: the commit compared with,
-    # the patch of every tracked change, and the size and modification time of
-    # every untracked file. The page polls it to know when to redraw itself.
+    # A digest that changes whenever the page would: the commits compared, the
+    # patch of every tracked change (a comment is one, to its store), and the
+    # size and modification time of every untracked file. The page polls it to
+    # know when to redraw itself.
     def fingerprint
-      Digest::SHA1.hexdigest([ base_sha, tracked_output, *untracked_paths.flat_map { | path | [ path, *stamp(path) ] } ].join("\0"))
+      Digest::SHA1.hexdigest([ base_sha, head_sha, tracked_output, *untracked_paths.flat_map { | path | [ path, *stamp(path) ] } ].join("\0"))
     end
 
     # Marks what differs between a removed line and the added line it is paired
@@ -359,15 +432,32 @@ module GitDiffLive
 
     private
 
+    # +revision+ comes from the query string: it has to look like a revision
+    # (so it can never be read as an option) and has to name a commit.
+    def commit(revision)
+      raise UnknownRevision, "#{ revision.inspect } is not a revision" unless revision.match?(/\A[\w.\/~^@{}][\w.\/~^@{}-]*\z/)
+
+      sha, status = git("rev-parse", "--verify", "--quiet", "--end-of-options", "#{ revision }^{commit}", allow_failure: true)
+      raise UnknownRevision, "#{ revision.inspect } does not name a commit" unless status.success?
+
+      sha.strip
+    end
+
+    # What ChangedFile.new takes for every changed path, the comments' store
+    # included: files and comments are both made from these.
+    def entries
+      @entries ||= tracked_entries + untracked_entries
+    end
+
     # One git call gives the file list and the patches from the same snapshot:
     # NUL-separated raw records (exact paths, whatever characters they hold),
     # an empty record, then the patch, one "diff --git" block per record in the
     # same order.
     def tracked_output
-      @tracked_output ||= git("diff", "--patch-with-raw", "-z", "--no-color", "--no-ext-diff", "--no-textconv", "--find-renames", "--unified=#{ context }", base_sha, "--").first
+      @tracked_output ||= git("diff", "--patch-with-raw", "-z", "--no-color", "--no-ext-diff", "--no-textconv", "--find-renames", "--unified=#{ context }", base_sha, *head_sha, "--").first
     end
 
-    def tracked_files
+    def tracked_entries
       return [] if tracked_output.empty?
 
       raw, patch = tracked_output.split("\0\0", 2)
@@ -385,25 +475,26 @@ module GitDiffLive
       patches = patch.to_s.split(/^(?=diff --(?:git|cc|combined) )/)
       raise GitError, "git listed #{ records.size } files but sent #{ patches.size } patches" unless records.size == patches.size
 
-      records.zip(patches).map { | record, patch | ChangedFile.new(**record, patch: patch) }
+      records.zip(patches).map { | record, patch | { **record, patch: patch } }
     end
 
+    # Two commits have no untracked files between them.
     def untracked_paths
-      @untracked_paths ||= git("ls-files", "--others", "--exclude-standard", "-z").first.split("\0")
+      @untracked_paths ||= working_tree? ? git("ls-files", "--others", "--exclude-standard", "-z").first.split("\0") : []
     end
 
-    def untracked_files
+    def untracked_entries
       untracked_paths.map do | path |
         full_path = root.join(path)
         content   = full_path.binread if full_path.file? && full_path.size <= MAX_UNTRACKED_BYTES
 
         if content.nil? || content.include?("\0")
-          ChangedFile.new(status: :added, path: path, untracked: true, unreadable: true)
+          { status: :added, path: path, untracked: true, unreadable: true }
         else
           lines = content.force_encoding(Encoding::UTF_8).scrub.lines(chomp: true)
           patch = "@@ -0,0 +1,#{ lines.size } @@\n#{ lines.map { "+#{ it }\n" }.join }"
 
-          ChangedFile.new(status: :added, path: path, untracked: true, patch: lines.any? ? patch : "")
+          { status: :added, path: path, untracked: true, patch: lines.any? ? patch : "" }
         end
       end
     end

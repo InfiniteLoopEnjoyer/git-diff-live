@@ -2,8 +2,11 @@
 .flex.flex-wrap.items-center.gap-x-6.gap-y-2#changes_summary data-changes-target="summary" data-fingerprint=@diff.fingerprint
 
   .text-fg-muted
-    ' Working tree of
-    span.font-mono.text-fg = @diff.branch
+    - if @diff.working_tree?
+      ' Working tree of
+      span.font-mono.text-fg = @diff.branch
+    - else
+      span.font-mono.text-fg title=@diff.head_sha = @diff.head
     '  against
     span.font-mono.text-fg title=@diff.base_sha = @diff.base
     - unless @diff.base_sha.start_with?(@diff.base)
