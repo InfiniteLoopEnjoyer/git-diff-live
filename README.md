@@ -22,7 +22,7 @@ Turbo, Stimulus, importmap-rails and Slim come along as dependencies. The host d
 ```ruby
 # Gemfile
 group :development do
-  gem "git_diff_live", github: "InfiniteLoopEnjoyer/git-diff-live"
+  gem "git_diff_live"
 end
 ```
 

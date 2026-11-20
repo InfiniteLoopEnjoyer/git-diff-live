@@ -106,3 +106,4 @@
 {"path":"test/cli_test.rb","side":"new","line":73,"code":"    assert_match(/^5 changes without a comment\\.$/, output)","comment":"One more uncommented change in the scratch repository: the binary file."}
 {"path":"test/cli_test.rb","side":"new","line":114,"code":"    status, _, error = run_cli \"comment\", \"logo.png:+1\", \"The new logo.\"","comment":"A line reference on a file without lines should point the agent at the file form."}
 {"path":"test/comments_test.rb","side":"new","line":30,"code":"  test \"write: a comment on a file is stored without a line, and belongs to the file\" do","comment":"Pins the stored shape of a file comment, replacement, and the stale sweep for a file that stops being a change."}
+{"path":"README.md","side":"new","line":25,"code":"  gem \"git_diff_live\"","comment":"The gem is published on RubyGems as of 0.3.0, so the install line no longer needs the GitHub source."}
